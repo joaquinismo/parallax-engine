@@ -1,0 +1,12 @@
+{
+  "brand": "PARALLAX",
+  "concept": "Cognitive perception and human mind",
+  "tone": "Serious, reflective, documentary",
+  "language": "es",
+  "video_duration": [70, 90],
+  "font": "Inter",
+  "colors": {
+    "background": "#0B0B0B",
+    "text": "#F5F5F5"
+  }
+}
