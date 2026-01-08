@@ -8,32 +8,34 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1️⃣ Clonar repositorio
       - uses: actions/checkout@v4
 
+      # 2️⃣ Instalar Python
       - uses: actions/setup-python@v4
         with:
           python-version: 3.11
 
+      # 3️⃣ Instalar dependencias del sistema necesarias
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg imagemagick
 
-      - name: Setup Python venv and install packages
+      # 4️⃣ Instalar librerías de Python directamente en el runner
+      - name: Install Python packages
         run: |
-          python -m venv venv
-          source venv/bin/activate
           python -m pip install --upgrade pip
           pip install moviepy==2.2.1 requests openai imageio[ffmpeg] decorator
 
+      # 5️⃣ Ejecutar script de render
       - name: Render Video
         env:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: |
-          source venv/bin/activate
-          python scripts/render_video.py
+        run: python scripts/render_video.py
 
+      # 6️⃣ Subir artefactos
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
