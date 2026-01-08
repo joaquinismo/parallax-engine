@@ -1,50 +1,42 @@
-name: Generate TikTok Video
+name: Render TikTok Video
 
 on:
-  workflow_dispatch:  # Permite ejecutarlo manualmente desde GitHub
+  workflow_dispatch:   # Ejecutar manualmente desde GitHub
 
 jobs:
-  generate_video:
+  render-video:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Hacer checkout del repo
+      # 1️⃣ Clonar el repositorio
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      # 2️⃣ Configurar Python
+      # 2️⃣ Instalar Python
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.11"
+          python-version: 3.11
 
-      # 3️⃣ Instalar dependencias necesarias
+      # 3️⃣ Instalar dependencias
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install openai moviepy boto3 requests pillow
+          pip install moviepy requests openai
 
-      # 4️⃣ Generar guion
-      - name: Generate Script
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: |
-          python scripts/generate_script.py
-
-      # 5️⃣ Renderizar vídeo con Pexels API
+      # 4️⃣ Ejecutar el script de render
       - name: Render Video
         env:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-        run: |
-          python scripts/render_video.py
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: python scripts/render_video.py
 
-      # 6️⃣ Subir vídeo a GitHub Release
-      - name: Upload Video to GitHub Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python scripts/upload_release.py
-
-      # 7️⃣ Confirmación final
-      - name: Done
-        run: echo "✅ Vídeo generado y subido correctamente"
+      # 5️⃣ Guardar los artefactos
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: TikTok Video Outputs
+          path: |
+            output/video_final.mp4
+            output/description.txt
+            output/metadata.json
