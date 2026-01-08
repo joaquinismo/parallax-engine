@@ -1,37 +1,49 @@
 name: Render TikTok Video
 
 on:
-  workflow_dispatch:   # Ejecutar manualmente desde GitHub
+  workflow_dispatch:
 
 jobs:
   render-video:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Clonar el repositorio
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Instalar Python
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: 3.11
 
-      # 3️⃣ Instalar dependencias
-      - name: Install dependencies
+      # ----------------------
+      # Instalar dependencias del sistema necesarias
+      # ----------------------
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg imagemagick
+
+      # ----------------------
+      # Instalar librerías de Python
+      # ----------------------
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install moviepy requests openai
 
-      # 4️⃣ Ejecutar el script de render
+      # ----------------------
+      # Ejecutar script
+      # ----------------------
       - name: Render Video
         env:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: python scripts/render_video.py
 
-      # 5️⃣ Guardar los artefactos
+      # ----------------------
+      # Guardar los artefactos
+      # ----------------------
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
