@@ -1,27 +1,45 @@
 import os
 import random
 import requests
-from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, AudioFileClip
 import json
+from pathlib import Path
+from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, AudioFileClip
+import openai
 
 # -----------------------------
-# CONFIGURACIÓN DE BRAND / ASSETS
+# PATHS Y CONFIG
 # -----------------------------
-BG_TEMP = "output/bg_temp.mp4"            # Vídeo temporal descargado
-SCRIPT_FILE = "output/script.txt"
-OUTPUT_FILE = "output/video_final.mp4"
-FONT_PATH = "assets/fonts/Inter.ttf"
-MUSIC_FOLDER = "assets/music/"
-PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")  # Debes añadir esto a GitHub Secrets
-CATEGORIES = ["city night neon", "abstract particles", "slow nature", "cinematic minimal", "space clouds"]
+BASE_DIR = Path(__file__).resolve().parent.parent
+ASSETS = BASE_DIR / "assets"
+OUTPUT = BASE_DIR / "output"
+
+OUTPUT.mkdir(exist_ok=True)
+
+BG_TEMP = OUTPUT / "bg_temp.mp4"
+SCRIPT_FILE = OUTPUT / "script.txt"
+OUTPUT_FILE = OUTPUT / "video_final.mp4"
+
+FONT_PATH = ASSETS / "fonts" / "Inter-SemiBold.ttf"
+MUSIC_FOLDER = ASSETS / "music"
+
+PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")       # Añadir a GitHub Secrets
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")       # Añadir a GitHub Secrets
+openai.api_key = OPENAI_API_KEY
+
+CATEGORIES = [
+    "city night neon",
+    "abstract particles",
+    "cinematic minimal",
+    "space clouds",
+    "slow motion nature"
+]
 
 # -----------------------------
-# FUNCIONES AUXILIARES
+# FUNCIONES
 # -----------------------------
-
-def download_video_from_pexels(category, min_duration=10, max_duration=30):
+def download_video(category, min_dur=10, max_dur=30):
     """
-    Descarga un vídeo aleatorio desde Pexels API según categoría y duración
+    Descarga un vídeo aleatorio de Pexels según categoría y duración
     """
     headers = {"Authorization": PEXELS_API_KEY}
     params = {
@@ -30,121 +48,161 @@ def download_video_from_pexels(category, min_duration=10, max_duration=30):
         "size": "medium",
         "per_page": 15
     }
-    response = requests.get("https://api.pexels.com/videos/search", headers=headers, params=params)
-    data = response.json()
-    
-    # Filtrar por duración
-    filtered_videos = [v for v in data.get("videos", []) if min_duration <= v['duration'] <= max_duration]
-    if not filtered_videos:
-        raise Exception(f"No se encontraron vídeos para {category} con duración {min_duration}-{max_duration}s")
-    
-    video = random.choice(filtered_videos)
-    video_url = video['video_files'][-1]['link']  # Elegir la mejor calidad
-    r = requests.get(video_url)
-    
+
+    r = requests.get(
+        "https://api.pexels.com/videos/search",
+        headers=headers,
+        params=params
+    ).json()
+
+    videos = [
+        v for v in r.get("videos", [])
+        if min_dur <= v["duration"] <= max_dur
+    ]
+
+    if not videos:
+        raise RuntimeError(f"No se encontraron vídeos para la categoría {category}")
+
+    video = random.choice(videos)
+    url = video["video_files"][-1]["link"]
+
     with open(BG_TEMP, "wb") as f:
-        f.write(r.content)
-    return BG_TEMP
+        f.write(requests.get(url).content)
+
+    return category
 
 def choose_music():
     """
-    Selecciona aleatoriamente una pista de la carpeta de música local
+    Selecciona aleatoriamente un audio de la carpeta de música
     """
-    music_files = [os.path.join(MUSIC_FOLDER, f) for f in os.listdir(MUSIC_FOLDER) if f.endswith((".mp3", ".wav"))]
-    return random.choice(music_files)
+    tracks = list(MUSIC_FOLDER.glob("*.mp3"))
+    if not tracks:
+        raise RuntimeError("No hay archivos de música en la carpeta assets/music/")
+    return random.choice(tracks)
 
 def load_script():
     """
-    Lee el guion generado previamente
+    Lee el guion desde script.txt
     """
-    with open(SCRIPT_FILE, "r", encoding="utf-8") as f:
-        text = f.read().strip()
-    # Dividir por líneas para animación progresiva
-    lines = [line for line in text.split("\n") if line.strip()]
-    return lines
+    with open(SCRIPT_FILE, encoding="utf-8") as f:
+        return [l.strip() for l in f.readlines() if l.strip()]
 
-# -----------------------------
-# RENDER DEL VÍDEO
-# -----------------------------
 def render_video():
-    # Elegir categoría de fondo aleatoria
-    category = random.choice(CATEGORIES)
-    print(f"[INFO] Descargando vídeo de Pexels categoría: {category}")
-    bg_file = download_video_from_pexels(category)
-
-    # Música
+    """
+    Renderiza el vídeo completo con fondo, música y textos animados
+    """
+    category = download_video(random.choice(CATEGORIES))
     music_file = choose_music()
-    print(f"[INFO] Música elegida: {music_file}")
-
-    # Script
     lines = load_script()
-    duration_per_line = 4  # Duración de cada línea en segundos
-    total_duration = max(len(lines) * duration_per_line, 10)  # mínimo 10s
-    
-    # Fondo
-    bg_clip = VideoFileClip(bg_file)
-    if bg_clip.duration < total_duration:
-        # Repetir el clip si es más corto que el total del vídeo
-        n_loops = int(total_duration // bg_clip.duration) + 1
-        bg_clip = bg_clip.loop(n_loops=n_loops)
-    bg_clip = bg_clip.subclip(0, total_duration)
-    bg_clip = bg_clip.resize(height=1920).resize(width=1080)
 
-    # Música
-    audio_clip = AudioFileClip(music_file).subclip(0, total_duration)
-    bg_clip = bg_clip.set_audio(audio_clip.volumex(0.5))  # volumen moderado
+    duration_per_line = 3.5
+    total_duration = max(len(lines) * duration_per_line, 10)
 
-    # Texto animado
-    clips = []
+    # --- Fondo ---
+    bg = VideoFileClip(str(BG_TEMP))
+    if bg.duration < total_duration:
+        bg = bg.loop(duration=total_duration)
+    bg = bg.subclip(0, total_duration)
+    bg = bg.resize(height=1920)
+    bg = bg.crop(
+        x_center=bg.w / 2,
+        y_center=bg.h / 2,
+        width=1080,
+        height=1920
+    )
+
+    # --- Música ---
+    audio = AudioFileClip(str(music_file)).subclip(0, total_duration)
+    bg = bg.set_audio(audio.volumex(0.45))
+
+    # --- Texto animado ---
+    text_clips = []
     for i, line in enumerate(lines):
-        txt_clip = TextClip(
+        txt = TextClip(
             line,
-            fontsize=60,
-            font=FONT_PATH,
+            font=str(FONT_PATH),
+            fontsize=72,
             color="white",
             method="caption",
-            size=(1000, None),  # margen lateral
-        )
-        txt_clip = txt_clip.set_start(i*duration_per_line)\
-                           .set_duration(duration_per_line)\
-                           .fadein(0.5).fadeout(0.5)\
-                           .set_position(("center", "center"))
-        clips.append(txt_clip)
+            size=(900, None),
+            align="center"
+        ).set_start(i * duration_per_line)\
+         .set_duration(duration_per_line)\
+         .fadein(0.4)\
+         .fadeout(0.4)\
+         .set_position("center")
+        text_clips.append(txt)
 
-    # Composición final
-    final = CompositeVideoClip([bg_clip, *clips])
+    final = CompositeVideoClip([bg, *text_clips])
+
     final.write_videofile(
-        OUTPUT_FILE,
+        str(OUTPUT_FILE),
         fps=30,
         codec="libx264",
         audio_codec="aac",
         preset="medium",
-        threads=4,
-        verbose=True
+        threads=4
     )
 
-    print(f"[INFO] Vídeo renderizado correctamente: {OUTPUT_FILE}")
-    return OUTPUT_FILE
-
-# -----------------------------
-# METADATOS / TRAZABILIDAD
-# -----------------------------
-def save_metadata(video_file, category, music_file):
-    metadata = {
-        "video_file": os.path.basename(video_file),
+    return {
+        "video": OUTPUT_FILE.name,
         "category": category,
-        "music_file": os.path.basename(music_file),
-        "duration_lines": len(load_script()),
-        "brand": "PARALLAX"
+        "music": music_file.name,
+        "lines": len(lines),
+        "script_lines": lines
     }
-    meta_file = "output/metadata.json"
-    with open(meta_file, "w", encoding="utf-8") as f:
-        json.dump(metadata, f, indent=4)
-    print(f"[INFO] Metadatos guardados en: {meta_file}")
 
 # -----------------------------
-# EJECUCIÓN PRINCIPAL
+# METADATA
+# -----------------------------
+def save_metadata(meta):
+    with open(OUTPUT / "metadata.json", "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=4)
+    print(f"[INFO] Metadata guardada en {OUTPUT / 'metadata.json'}")
+
+# -----------------------------
+# DESCRIPCION
+# -----------------------------
+def generate_description(script_lines):
+    """
+    Genera una descripción profesional para TikTok basada en el guion
+    """
+    prompt = f"""
+    Eres un experto en marketing digital para TikTok.
+    Basándote en el siguiente guion, escribe una descripción llamativa y profesional para TikTok:
+    Guion:
+    {script_lines}
+
+    La descripción debe:
+    - Ser corta, directa y atrapar la atención
+    - Tener un máximo de 150 caracteres
+    - Ser profesional pero atractiva
+    - Incluir hashtags universales (máx. 5)
+    """
+
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.7,
+        max_tokens=80
+    )
+
+    description = response.choices[0].message.content.strip()
+
+    # Guardar en archivo
+    with open(OUTPUT / "description.txt", "w", encoding="utf-8") as f:
+        f.write(description)
+
+    print(f"[INFO] Descripción generada: {description}")
+    return description
+
+# -----------------------------
+# MAIN
 # -----------------------------
 if __name__ == "__main__":
-    final_video = render_video()
-    save_metadata(final_video, category, music_file)
+    metadata = render_video()
+    save_metadata(metadata)
+
+    description = generate_description(metadata["script_lines"])
+    metadata["description"] = description
+    save_metadata(metadata)
