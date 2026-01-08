@@ -3,7 +3,7 @@ import random
 import requests
 import json
 from pathlib import Path
-from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, AudioFileClip
+from moviepy import VideoFileClip, TextClip, CompositeVideoClip, AudioFileClip
 import openai
 
 # -----------------------------
